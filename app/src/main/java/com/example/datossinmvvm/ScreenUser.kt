@@ -1,22 +1,36 @@
-package com.example.datossinmvvm
-
 import android.content.Context
 import android.util.Log
-import androidx.compose.foundation.layout.*
-import androidx.compose.material.*
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
-import androidx.compose.runtime.*
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.room.Room
+import com.example.datossinmvvm.User
+import com.example.datossinmvvm.UserDao
+import com.example.datossinmvvm.UserDatabase
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ScreenUser() {
+fun ScreenUser(modifier: Modifier) {
     val context = LocalContext.current
     var db: UserDatabase
     var id by remember { mutableStateOf("") }
@@ -25,61 +39,121 @@ fun ScreenUser() {
     var dataUser = remember { mutableStateOf("") }
 
     db = crearDatabase(context)
-
     val dao = db.userDao()
-
     val coroutineScope = rememberCoroutineScope()
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
-        Spacer(Modifier.height(50.dp))
-        TextField(
-            value = id,
-            onValueChange = { id = it },
-            label = { Text("ID (solo lectura)") },
-            readOnly = true,
-            singleLine = true
-        )
-        TextField(
-            value = firstName,
-            onValueChange = { firstName = it },
-            label = { Text("First Name: ") },
-            singleLine = true
-        )
-        TextField(
-            value = lastName,
-            onValueChange = { lastName = it },
-            label = { Text("Last Name:") },
-            singleLine = true
-        )
-        Button(
-            onClick = {
-                val user = User(0, firstName, lastName)
-                coroutineScope.launch {
-                    AgregarUsuario(user = user, dao = dao)
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Usuarios") },
+                actions = {
+                    // Botón para agregar usuario
+                    Button(
+                        onClick = {
+                            val user = User(0, firstName, lastName)
+                            coroutineScope.launch {
+                                AgregarUsuario(user = user, dao = dao)
+                            }
+                            firstName = ""
+                            lastName = ""
+                        },
+                        modifier = Modifier.padding(end = 8.dp)
+                    ) {
+                        Text("Agregar Usuario", fontSize = 14.sp)
+                    }
+
+                    // Botón para listar usuarios
+                    Button(
+                        onClick = {
+                            coroutineScope.launch {
+                                val data = getUsers(dao = dao)
+                                dataUser.value = data
+                            }
+                        }
+                    ) {
+                        Text("Listar Usuarios", fontSize = 14.sp)
+                    }
                 }
-                firstName = ""
-                lastName = ""
-            }
-        ) {
-            Text("Agregar Usuario", fontSize = 16.sp)
+            )
         }
-        Button(
-            onClick = {
-                coroutineScope.launch {
-                    val data = getUsers(dao = dao)
-                    dataUser.value = data
-                }
-            }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .padding(16.dp)
         ) {
-            Text("Listar Usuarios", fontSize = 16.sp)
+            Spacer(Modifier.height(20.dp))
+
+            // Campo de ID (solo lectura)
+            TextField(
+                value = id,
+                onValueChange = { id = it },
+                label = { Text("ID (solo lectura)") },
+                readOnly = true,
+                singleLine = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp)
+            )
+
+            // Campo de First Name
+            TextField(
+                value = firstName,
+                onValueChange = { firstName = it },
+                label = { Text("First Name:") },
+                singleLine = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp)
+            )
+
+            // Campo de Last Name
+            TextField(
+                value = lastName,
+                onValueChange = { lastName = it },
+                label = { Text("Last Name:") },
+                singleLine = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp)
+            )
+
+            Spacer(Modifier.height(24.dp))
+
+            // Botón para eliminar último usuario
+            Button(
+                onClick = {
+                    coroutineScope.launch {
+                        EliminarUltimoUsuario(dao = dao)
+                        val data = getUsers(dao = dao)
+                        dataUser.value = data
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp)
+            ) {
+                Text("Eliminar Último Usuario", fontSize = 16.sp)
+            }
+
+            Spacer(Modifier.height(24.dp))
+
+            // Mostrar lista de usuarios
+            Text(
+                text = dataUser.value,
+                fontSize = 20.sp,
+                modifier = Modifier.padding(vertical = 8.dp)
+            )
         }
-        Text(
-            text = dataUser.value, fontSize = 20.sp
-        )
+    }
+}
+
+suspend fun EliminarUltimoUsuario(dao: UserDao) {
+    try {
+        dao.deleteLast()
+    } catch (e: Exception) {
+        Log.e("User", "Error: deleteLast: ${e.message}")
     }
 }
 
@@ -93,12 +167,13 @@ fun crearDatabase(context: Context): UserDatabase {
 }
 
 suspend fun getUsers(dao: UserDao): String {
-    var result = ""
+    var rpta: String = ""
     val users = dao.getAll()
     users.forEach { user ->
-        result += "${user.firstName} - ${user.lastName}\n"
+        val fila = user.firstName + " - " + user.lastName + "\n"
+        rpta += fila
     }
-    return result
+    return rpta
 }
 
 suspend fun AgregarUsuario(user: User, dao: UserDao) {
